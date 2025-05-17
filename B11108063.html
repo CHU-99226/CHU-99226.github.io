@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>PagePilot 無礙閱讀助手</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&family=Merriweather:wght@300;400&display=swap" rel="stylesheet" />
+  <style>
+    /* Reset */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      --primary: #5035A5;
+      --secondary: #7F5AF0;
+      --accent: #FF74C1;
+      --bg-gradient: linear-gradient(135deg, var(--primary), var(--secondary));
+      --panel-bg: rgba(255,255,255,0.9);
+      --text-dark: #333;
+      --text-light: #fff;
+      font-family: 'Poppins', sans-serif;
+      background: var(--bg-gradient);
+      display: flex; justify-content: center; align-items: center;
+      overflow: hidden;
+    }
+    /* Entry Screen */
+    #uploadScreen {
+      background: var(--panel-bg);
+      padding: 2rem;
+      border-radius: 16px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+      text-align: center;
+      width: 320px;
+    }
+    #uploadScreen h2 {
+      font-family: 'Merriweather', serif;
+      font-size: 1.75rem;
+      color: var(--secondary);
+      margin-bottom: 1.5rem;
+    }
+    .btn-upload {
+      display: inline-block;
+      padding: 0.75rem 1.5rem;
+      background: var(--accent);
+      color: var(--text-light);
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.3s, transform 0.2s;
+    }
+    .btn-upload:hover { background: #ff5fb7; transform: translateY(-2px); }
+    .progress-bar {
+      width: 100%; height: 8px;
+      background: #e0e0e0; border-radius: 4px;
+      overflow: hidden; display: none; margin-top: 0.5rem;
+    }
+    .progress-bar div {
+      width: 0%; height: 100%; background: var(--accent);
+      transition: width 0.4s ease;
+    }
+    /* Reader Screen */
+    #reader {
+      display: none; position: absolute; inset: 0;
+      background: #f7f7fa; padding: 1rem;
+    }
+    .reader-container { display: flex; height: 100%; }
+    .left-panel, .right-panel {
+      background: var(--panel-bg); border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+    }
+    .left-panel {
+      flex: 3; padding: 1rem; margin-right: 1rem;
+      display: flex; justify-content: center; align-items: center;
+    }
+    .left-panel canvas { max-width: 100%; border-radius: 12px; }
+    .right-panel {
+      flex: 1; padding: 1rem; display: flex; flex-direction: column;
+    }
+    #webcam { width: 100%; border-radius: 8px; margin-bottom: 0.75rem; }
+    #audioMeter { width: 100%; height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin-bottom: 0.75rem; }
+    #audioLevel { width: 0%; height: 100%; background: var(--secondary); transition: width 0.1s ease; }
+    #stats p { margin: 0.5rem 0; display: flex; justify-content: space-between; font-size: 0.95rem; color: var(--text-dark); }
+    .stat-label { font-weight: 500; } .stat-value { font-weight: 700; color: var(--secondary); }
+    #timestamp { text-align: center; font-size: 0.85rem; color: var(--text-dark); margin-bottom: 0.5rem; }
+    .reader-actions {
+      margin-top: auto;
+      display: flex; flex-direction: column; gap: 0.5rem; width: 100%;
+    }
+    .reader-actions button {
+      width: 100%; padding: 0.75rem; border: none; border-radius: 8px;
+      font-weight: 600; cursor: pointer; transition: background 0.3s, transform 0.2s;
+      background: var(--accent); color: var(--text-light);
+      display: flex; justify-content: center; align-items: center;
+    }
+    .reader-actions button.btn-secondary { background: var(--secondary); }
+    .reader-actions button.btn-primary:hover { background: #ff5fb7; }
+    .reader-actions button.btn-secondary:hover { background: #777; }
+    /* Modal */
+    .modal-backdrop { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; }
+    .modal { background: var(--panel-bg); padding: 1.5rem; border-radius: 16px; width:90%; max-width:380px; box-shadow: 0 12px 32px rgba(0,0,0,0.2); }
+    .modal h2 { font-family:'Merriweather', serif; color: var(--primary); margin-bottom:1rem; font-size:1.4rem; }
+    .modal p { margin:0.75rem 0; font-size:0.9rem; color: var(--text-dark); border-bottom:1px solid #ddd; padding-bottom:0.5rem; }
+    .modal .btn-close {
+      display: block; margin: 1rem auto 0; padding: 0.5rem 1rem;
+      background: var(--accent); color: var(--text-light); border-radius: 6px; text-align: center;
+    }
+    .modal .btn-close:hover { background: #ff5fb7; }
+  </style>
+</head>
+<body>
+  <!-- Entry Screen -->
+  <div id="uploadScreen">
+    <h2>PagePilot 無礙閱讀助手</h2>
+    <label for="fileInput" class="btn-upload">上傳 PDF</label>
+    <div class="progress-bar" id="progressBar"><div id="progressFill"></div></div>
+    <input type="file" id="fileInput" accept="application/pdf" style="display:none;" />
+  </div>
+
+  <!-- Reader Screen -->
+  <div id="reader">
+    <div id="timestamp"></div>
+    <div class="reader-container">
+      <div class="left-panel"><canvas id="pdfCanvas"></canvas></div>
+      <div class="right-panel">
+        <video id="webcam" autoplay playsinline muted></video>
+        <div id="audioMeter"><div id="audioLevel"></div></div>
+        <div id="stats">
+          <p><span class="stat-label">專注</span><span class="stat-value" id="focusTime">0.0</span>s</p>
+          <p><span class="stat-label">偏離</span><span class="stat-value" id="awayTime">0.0</span>s</p>
+          <p><span class="stat-label">頁面</span><span class="stat-value" id="pageNum">1</span>/<span class="stat-value" id="pageCount">—</span></p>
+        </div>
+        <div class="reader-actions">
+          <button id="stopBtn" class="btn-primary" style="display:none;">停止閱讀</button>
+          <button id="closeReaderBtn" class="btn-secondary" style="display:none;">返回入口</button>
+          <button id="closeWindowBtn" class="btn-secondary" style="display:none;">關閉網頁</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.14.305/build/pdf.min.js"></script>
+  <script>pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.14.305/build/pdf.worker.min.js";</script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script>
+    // Elements
+    const fileInput      = document.getElementById('fileInput');
+    const progressBar    = document.getElementById('progressBar');
+    const progressFill   = document.getElementById('progressFill');
+    const uploadScreen   = document.getElementById('uploadScreen');
+    const reader         = document.getElementById('reader');
+    const pdfCanvas      = document.getElementById('pdfCanvas');
+    const ctxPDF         = pdfCanvas.getContext('2d');
+    const pageCountEl    = document.getElementById('pageCount');
+    const pageNumEl      = document.getElementById('pageNum');
+    const webcam         = document.getElementById('webcam');
+    const audioLevel     = document.getElementById('audioLevel');
+    const focusTimeEl    = document.getElementById('focusTime');
+    const awayTimeEl     = document.getElementById('awayTime');
+    const stopBtn        = document.getElementById('stopBtn');
+    const closeReaderBtn = document.getElementById('closeReaderBtn');
+    const closeWindowBtn = document.getElementById('closeWindowBtn');
+    const timestampEl    = document.getElementById('timestamp');
+
+    // State
+    let history = [];
+    const savedHistory = sessionStorage.getItem('pdfHistory');
+    if (savedHistory) {
+      try { history = JSON.parse(savedHistory); } catch {}
+    }
+    let pdfDoc, pageNum = 1, focusTime = 0, awayTime = 0;
+    let faceMesh, audioContext = new (window.AudioContext||window.webkitAudioContext)(),
+        analyser, dataArray, audioStream;
+
+    // Timestamp update
+    setInterval(() => {
+      timestampEl.textContent = new Date().toLocaleString();
+    }, 1000);
+
+    // File upload handler
+    fileInput.addEventListener('change', async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      progressBar.style.display = 'block';
+      const readerIO = new FileReader();
+      readerIO.onprogress = ev => {
+        if (ev.lengthComputable) {
+          progressFill.style.width = (ev.loaded/ev.total*100) + '%';
+        }
+      };
+      readerIO.onload = async () => {
+        uploadScreen.style.display = 'none';
+        reader.style.display = 'flex';
+
+        // Load PDF
+        pdfDoc = await pdfjsLib.getDocument({ data: readerIO.result }).promise;
+        pageCountEl.textContent = pdfDoc.numPages;
+        renderPage(1);
+
+        // Request camera + mic
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+          .then(stream => {
+            webcam.srcObject = stream;
+
+            initFaceMesh();
+            window.detectionInterval = setInterval(() => {
+              faceMesh.send({ image: webcam });
+            }, 100);
+
+            audioContext.resume().then(() => {
+              audioStream = stream;
+              const source = audioContext.createMediaStreamSource(stream);
+              analyser = audioContext.createAnalyser();
+              analyser.fftSize = 256;
+              dataArray = new Uint8Array(analyser.frequencyBinCount);
+              source.connect(analyser);
+              updateAudioMeter();
+            });
+
+            startSpeechRecognition();
+
+            stopBtn.style.display = 'flex';
+          })
+          .catch(err => console.warn('使用者拒絕攝/麥權限', err));
+      };
+      readerIO.readAsArrayBuffer(file);
+    });
+
+    // Stop & history
+    stopBtn.onclick = () => {
+      if (window.detectionInterval) clearInterval(window.detectionInterval);
+      history.push({ page: pageNum, focus: focusTime.toFixed(1), away: awayTime.toFixed(1), t: new Date() });
+      showHistoryModal();
+      stopBtn.style.display = 'none';
+      closeReaderBtn.style.display = 'flex';
+      closeWindowBtn.style.display = 'flex';
+    };
+    closeReaderBtn.onclick = () => {
+      sessionStorage.setItem('pdfHistory', JSON.stringify(history));
+      location.reload();
+    };
+    closeWindowBtn.onclick = () => window.close();
+
+    // Render PDF page
+    async function renderPage(num) {
+      const page = await pdfDoc.getPage(num);
+      const vp = page.getViewport({ scale: 1.5 });
+      pdfCanvas.width = vp.width;
+      pdfCanvas.height = vp.height;
+      await page.render({ canvasContext: ctxPDF, viewport: vp }).promise;
+      pageNum = num;
+      pageNumEl.textContent = num;
+    }
+
+    // History modal
+    function showHistoryModal() {
+      const bg = document.createElement('div');
+      bg.className = 'modal-backdrop';
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.innerHTML = '<h2>閱讀歷史</h2>' +
+        history.map((h,i) =>
+          `<p>${i+1}. 第${h.page}頁 — 專注:${h.focus}s 偏離:${h.away}s — ${h.t.toLocaleString()}</p>`
+        ).join('') +
+        '<button class="btn-close" onclick="this.closest(\'.modal-backdrop\').remove()">關閉</button>';
+      bg.appendChild(modal);
+      document.body.appendChild(bg);
+    }
+
+    // FaceMesh initialization
+    function initFaceMesh() {
+      faceMesh = new FaceMesh({
+        locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`
+      });
+      faceMesh.setOptions({
+        maxNumFaces: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7
+      });
+      faceMesh.onResults(results => {
+        if (results.multiFaceLandmarks?.length) focusTime += 0.1;
+        else awayTime += 0.1;
+        focusTimeEl.textContent = focusTime.toFixed(1);
+        awayTimeEl.textContent = awayTime.toFixed(1);
+      });
+    }
+
+    // Audio meter loop
+    function updateAudioMeter() {
+      if (!analyser) return;
+      analyser.getByteFrequencyData(dataArray);
+      const level = Math.max(...dataArray) / 255 * 100;
+      audioLevel.style.width = level + '%';
+      requestAnimationFrame(updateAudioMeter);
+    }
+
+    // Speech recognition with Chinese-number normalization
+    function startSpeechRecognition() {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) return;
+      const chineseMap = { '零':0,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10 };
+      const normalizeNums = s => s.replace(/[零一二三四五六七八九十]+/g, cn => {
+        let total = 0, unit = 1;
+        for (let char of cn) {
+          const val = chineseMap[char];
+          if (val === 10) {
+            unit = total ? total * 10 : 10;
+          } else {
+            total += (unit > 1 ? val * unit : val);
+          }
+        }
+        return total.toString();
+      });
+
+      const recognition = new SR();
+      recognition.lang = 'zh-TW';
+      recognition.continuous = true;
+      recognition.onresult = event => {
+        let text = event.results[event.resultIndex][0].transcript.trim().toLowerCase();
+        console.log('辨識到：', text);
+        text = normalizeNums(text);
+        console.log('轉換後：', text);
+
+        // 跳到第 N 頁
+        const goMatch = text.match(/(?:跳到)?第\s*(\d+)\s*頁/);
+        if (goMatch) {
+          renderPage(Math.min(Math.max(1, +goMatch[1]), pdfDoc.numPages));
+          return;
+        }
+        // 下 N 頁
+        const downMatch = text.match(/下\s*(\d+)\s*頁/);
+        if (downMatch) {
+          renderPage(Math.min(pdfDoc.numPages, pageNum + +downMatch[1]));
+          return;
+        }
+        // 上 N 頁
+        const upMatch = text.match(/上\s*(\d+)\s*頁/);
+        if (upMatch) {
+          renderPage(Math.max(1, pageNum - +upMatch[1]));
+          return;
+        }
+        // 下一頁 / 上一頁
+        if (text.includes('下一頁')) {
+          renderPage(Math.min(pdfDoc.numPages, pageNum + 1));
+        } else if (text.includes('上一頁')) {
+          renderPage(Math.max(1, pageNum - 1));
+        }
+      };
+      recognition.onend = () => recognition.start();
+      recognition.onerror = e => console.error('Speech error', e);
+      recognition.start();
+    }
+  </script>
+</body>
+</html>
